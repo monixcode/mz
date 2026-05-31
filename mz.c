@@ -1,0 +1,95 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdbool.h>
+
+#define MZ_SUCCESS 0
+#define MZ_FAILURE 1
+
+typedef enum{
+	MODE_NONE,
+	MODE_PACK,
+	MODE_UNPACK
+} MZ_MODE;
+
+typedef struct{
+	MZ_MODE mode;
+	char *files[4096];
+	size_t file_count;
+	char *outfile;
+	char *ERROR_MESSAGE;
+	int EXIT_CODE;
+} MZ_ARGS;
+
+MZ_ARGS mz_parse_args(int argc, char *argv[])
+{
+	MZ_ARGS args = {0};
+	args.mode = MODE_NONE;
+	args.file_count = 0;
+	args.outfile = NULL;
+	args.ERROR_MESSAGE = "PARSING INCOMPLETE";
+	args.EXIT_CODE = MZ_FAILURE;
+	
+	bool outputfiledetected = false;
+	
+	for(int arg = 1; arg < argc; arg++){
+		char *argument = argv[arg];
+		if(outputfiledetected){
+			args.outfile = argument;
+			outputfiledetected = false;
+			continue;
+		}
+		if(argument[0] == '-'){
+			char *opt = argument + 1;
+			if(strcmp(opt, "pack") == 0 || strcmp(opt, "p") == 0){
+				if(args.mode != MODE_NONE){
+					args.ERROR_MESSAGE = "MULTIPLE MODE OPTIONS";
+					args.EXIT_CODE = MZ_FAILURE;
+					return args;
+				}
+				args.mode = MODE_PACK;
+				continue;
+			}else if(strcmp(opt, "unpack") == 0 || strcmp(opt, "up") == 0){
+				if(args.mode != MODE_NONE){
+					args.ERROR_MESSAGE = "MULTIPLE MODE OPTIONS";
+					args.EXIT_CODE = MZ_FAILURE;
+					return args;
+				}
+				args.mode = MODE_UNPACK;
+				continue;
+			}else if(strcmp(opt, "output") == 0 || strcmp(opt, "o") == 0){
+				if(args.outfile != NULL){
+					args.ERROR_MESSAGE = "MULTIPLE OUTPUTFILE SPECIFIED";
+					args.EXIT_CODE = MZ_FAILURE;
+					return args;
+				}
+				if(arg == argc - 1){
+					args.ERROR_MESSAGE = "OUTPUTFILENAME NOT SPECIFIED";
+					args.EXIT_CODE = MZ_FAILURE;
+					return args;
+				}
+				outputfiledetected = true;
+				continue;
+			}else{
+				args.ERROR_MESSAGE = "INVALID OPTION SPECIFIED";
+				args.EXIT_CODE = MZ_FAILURE;
+				return args;
+			}
+		}else{
+			args.files[args.file_count] = argument;
+			args.file_count++;
+		}
+	}
+	args.ERROR_MESSAGE = NULL;
+	args.EXIT_CODE = MZ_SUCCESS;
+	return args;
+}
+
+int main(int argc, char *argv[])
+{
+	MZ_ARGS args = mz_parse_args(argc, argv);
+	if(args.EXIT_CODE != MZ_SUCCESS){
+		fprintf(stderr, "Error: %s\n", args.ERROR_MESSAGE);
+		return MZ_FAILURE;
+	}
+	return 0;
+}
