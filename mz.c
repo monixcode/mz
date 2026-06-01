@@ -2,10 +2,13 @@
 #include <string.h>
 #include <stdbool.h>
 
-#define MZ_HEADER MZ
+#define MZ_HEADER "MZ"
+#define MZ_VERSION "1.0.0"
 
 #define MZ_SUCCESS 0
 #define MZ_FAILURE 1
+
+int mz_archive(char *files[], size_t file_count, char *outfile, int compression);
 
 typedef enum{
 	MODE_NONE,
@@ -19,9 +22,14 @@ typedef enum{
 	FLAG_VERSION
 } MZ_FLAG;
 
+typedef enum{
+	COM_NONE
+} MZ_COM;
+
 typedef struct{
 	MZ_MODE mode;
 	MZ_FLAG flag;
+	MZ_COM compression;
 	char *files[4096];
 	size_t file_count;
 	char *outfile;
@@ -34,6 +42,7 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 	MZ_ARGS args = {0};
 	args.mode = MODE_NONE;
 	args.flag = FLAG_NONE;
+	args.compression = COM_NONE;
 	args.file_count = 0;
 	args.outfile = NULL;
 	args.ERROR_MESSAGE = "PARSING INCOMPLETE";
@@ -138,18 +147,80 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 int main(int argc, char *argv[])
 {
 	MZ_ARGS args = mz_parse_args(argc, argv);
+	
 	if(args.EXIT_CODE != MZ_SUCCESS){
 		fprintf(stderr, "Error: %s\n", args.ERROR_MESSAGE);
 		return MZ_FAILURE;
 	}
-	printf("MODE :- %d\n", args.mode);
-	printf("FLAG :- %d\n", args.flag);
-	printf("FILE COUNT : %d\n", args.file_count);
-	for(int i = 0; i < args.file_count; i++){
-		printf("FILE %d :- %s\n", i + 1 , args.files[i]);
+	
+	if(args.flag == FLAG_HELP){
+		printf("\n                  MZ ARCHIVER \n\n");
+		printf("A File Archiver Tool to bundle many files in a single file \n\n");
+		printf("Options:-\n\n");
+		printf("     For Archiving :- mz -archive/-a file.txt .... -output/-o outputfile.mz\n\n");
+		printf("     For Extracting :- mz -extract/-x file.mz ....\n\n");
+		printf("Optional Flags:\n\n");
+		printf("     mz --help/--h\n\n");
+		printf("     mz --version/--v\n\n");
+		return MZ_SUCCESS;
+		
+	}else if(args.flag == FLAG_VERSION){
+		printf("%s - %s\n",MZ_HEADER, MZ_VERSION);
+		return MZ_SUCCESS;
+		
+	}else if(args.mode == MODE_ARCHIVE){
+		
+		if(args.file_count == 0){
+			fprintf(stderr, "Error : No Files Passed\n");
+			return MZ_FAILURE;
+		}
+		
+		if(args.outfile == NULL){
+			fprintf(stderr, "Error : No Output File Passed\n");
+			return MZ_FAILURE;
+		}
+		int archive = mz_archive(args.files, args.file_count, args.outfile, args.compression);
+		if(archive != 0){
+			fprintf(stderr, "Error : Unable to Archive\n");
+			return MZ_FAILURE;
+		}
+		return MZ_SUCCESS;
 	}
-	printf("OUTPUT FILE : %s\n", args.outfile);
-	printf("ERROR MESSAGE : %s\n", args.ERROR_MESSAGE);
-	printf("EXIT CODE : %d\n", args.EXIT_CODE);
+	return MZ_SUCCESS;
+}
+
+int mz_archive(char *files[], size_t file_count, char *outfile, int compression)
+{
+	FILE *out = fopen(outfile, "w");
+	if(!out){
+		fprintf(stderr, "Error : Output File Not Opening\n");
+		return MZ_FAILURE;
+	}
+	if(fwrite(MZ_HEADER, sizeof(char), 2, out) != 2){
+		fprintf(stderr, "Error : Unable to write header\n");
+		return MZ_FAILURE;
+	}
+	if(fwrite(&compression, sizeof(int), 1, out) != 1){
+		fprintf(stderr, "Error : Unable to write compression details\n");
+		return MZ_FAILURE;
+	}
+	if(fwrite(&file_count, sizeof(size_t), 1, out) != 1){
+		fprintf(stderr, "Error : Unable to write file count\n");
+		return MZ_FAILURE;
+	}
+	for(size_t file = 0; file < file_count; file++){
+		
+		char *filename = files[file];
+		int filenamelength = strlen(filename);
+		
+		if(fwrite(&filenamelength, sizeof(int), 1, out) != 1){
+			fprintf(stderr, "Error : Unable to write file name length\n");
+			return MZ_FAILURE;
+		}
+		if(fwrite(filename, sizeof(char), filenamelength, out) != filenamelength){
+			fprintf(stderr, "Error : Unable to write file name\n");
+			return MZ_FAILURE;
+		}
+	}
 	return MZ_SUCCESS;
 }
