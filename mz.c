@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdbool.h>
 
 #define MZ_HEADER "MZ"
 #define MZ_VERSION "1.0.0"
+
+#define MZ_BUFFER 1048576
 
 #define MZ_SUCCESS 0
 #define MZ_FAILURE 1
@@ -191,23 +194,34 @@ int main(int argc, char *argv[])
 
 int mz_archive(char *files[], size_t file_count, char *outfile, int compression)
 {
-	FILE *out = fopen(outfile, "w");
+	FILE *out = fopen(outfile, "wb");
 	if(!out){
 		fprintf(stderr, "Error : Output File Not Opening\n");
 		return MZ_FAILURE;
 	}
 	if(fwrite(MZ_HEADER, sizeof(char), 2, out) != 2){
 		fprintf(stderr, "Error : Unable to write header\n");
+		fclose(out);
 		return MZ_FAILURE;
 	}
 	if(fwrite(&compression, sizeof(int), 1, out) != 1){
 		fprintf(stderr, "Error : Unable to write compression details\n");
+		fclose(out);
 		return MZ_FAILURE;
 	}
 	if(fwrite(&file_count, sizeof(size_t), 1, out) != 1){
 		fprintf(stderr, "Error : Unable to write file count\n");
+		fclose(out);
 		return MZ_FAILURE;
 	}
+	
+	char *buffer = malloc(MZ_BUFFER);
+	if(!buffer){
+		fprintf(stderr, "Error : Unable to allocate buffer size\n");
+		fclose(out);
+		return MZ_FAILURE;
+	}
+	
 	for(size_t file = 0; file < file_count; file++){
 		
 		char *filename = files[file];
@@ -215,12 +229,55 @@ int mz_archive(char *files[], size_t file_count, char *outfile, int compression)
 		
 		if(fwrite(&filenamelength, sizeof(int), 1, out) != 1){
 			fprintf(stderr, "Error : Unable to write file name length\n");
+			fclose(out);
+			free(buffer);
 			return MZ_FAILURE;
 		}
 		if(fwrite(filename, sizeof(char), filenamelength, out) != filenamelength){
 			fprintf(stderr, "Error : Unable to write file name\n");
+			fclose(out);
+			free(buffer);
 			return MZ_FAILURE;
 		}
+		FILE *in = fopen(filename, "rb");
+		if(!in){
+			fprintf(stderr, "Error : Unable to read input file\n");
+			fclose(out);
+			free(buffer);
+			return MZ_FAILURE;
+		}
+		fseek(in, 0, SEEK_END);
+		long filecontentsize = ftell(in);
+		fseek(in, 0, SEEK_SET);
+		if(fwrite(&filecontentsize, sizeof(long), 1, out) != 1){
+			fprintf(stderr, "Error : Unable to write file content size\n");
+			fclose(out);
+			free(buffer);
+			fclose(in);
+			return MZ_FAILURE;
+		}
+		long remaining = filecontentsize;
+		while(remaining != 0){
+			long chunk = MZ_BUFFER > remaining ? remaining : MZ_BUFFER;
+			if(fread(buffer, chunk, 1, in) != 1){
+				fprintf(stderr, "Error : Unable to read file content\n");
+				fclose(out);
+				free(buffer);
+				fclose(in);
+				return MZ_FAILURE;
+			}
+			if(fwrite(buffer, chunk, 1, out) != 1){
+				fprintf(stderr, "Error : Unable to write file content\n");
+				fclose(out);
+				free(buffer);
+				fclose(in);
+				return MZ_FAILURE;
+			}
+			remaining -= chunk;
+		}
+		fclose(in);
 	}
+	fclose(out);
+	free(buffer);
 	return MZ_SUCCESS;
 }
