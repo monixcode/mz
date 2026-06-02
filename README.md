@@ -9,6 +9,10 @@
 1) Archiving Many Files into a Single File.
 2) Extracting an archived file safely.
 
+## Limitations
+1) Only For Windows Till Now.
+2) No Path Sanitization.
+
 ## Compile
 ```bash
 gcc mz.c -o mz.exe
