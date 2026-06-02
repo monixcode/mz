@@ -2,18 +2,19 @@
 
 <img width="320" height="180" alt="mz" src="https://github.com/user-attachments/assets/de077a1b-6450-44cb-bb21-de39342a85d5" />
 
-## Features
-1) Archiving Many Files in a Single File.
-2) Extracting an archived file safely.
+## Version
+1.0.0
 
-## Limitations
-1) No Path Sanitization
-2) Only For Windows Till Now.
+## Features
+1) Archiving Many Files into a Single File.
+2) Extracting an archived file safely.
 
 ## Compile
 ```bash
 gcc mz.c -o mz.exe
 ```
+## Builds
+[MZ Builds](https://github.com/monixcode/mz/releases)
 
 ## Commands
 ### Archive
@@ -24,5 +25,12 @@ mz -a/-archive file.txt file2.txt .... -o/-output output.mz
 ```bash
 mz -x/-extract file.mz file2.mz ....
 ```
+
+## Optionals
+```bash
+mz --help/--h
+mz --version/--v
+```
+
 ## License
 MIT LICENSE @2026
