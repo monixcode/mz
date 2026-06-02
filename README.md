@@ -24,3 +24,5 @@ mz -a/-archive file.txt file2.txt .... -o/-output output.mz
 ```bash
 mz -x/-extract file.mz file2.mz ....
 ```
+## License
+MIT LICENSE @2026
