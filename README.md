@@ -3,15 +3,17 @@
 <img width="320" height="180" alt="mz" src="https://github.com/user-attachments/assets/de077a1b-6450-44cb-bb21-de39342a85d5" />
 
 ## Version
-1.0.0
+1.1.0
+
+## Changelog
+1) Added Cross Compatible Features
+2) Added Basic Path Sanitization features
 
 ## Features
 1) Archiving Many Files into a Single File.
 2) Extracting an archived file safely.
-
-## Limitations
-1) Only For Windows Till Now.
-2) No Path Sanitization.
+3) Basic Path Sanitization
+4) Cross Compatible on Windows and Linux
 
 ## Compile
 ```bash
