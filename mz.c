@@ -25,12 +25,40 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <dirent.h>
+#include <stdint.h>
 #include <stdbool.h>
+
+// Essential imports and wrappers for windows
+#ifdef _WIN32
+	#include <direct.h>
+    #define mz_mkdir(path) _mkdir(path)
+
+    int64_t mz_file_size(FILE *fp)
+    {
+        _fseeki64(fp, 0, SEEK_END);
+        int64_t size = _ftelli64(fp);
+        _fseeki64(fp, 0, SEEK_SET);
+        return size;
+    }
+// Essential imports and wrappers for linux
+#else
+    #include <sys/types.h>
+    #include <sys/stat.h>
+    #define mz_mkdir(path) mkdir(path, 0755)
+
+    int64_t mz_file_size(FILE *fp)
+    {
+        fseeko(fp, 0, SEEK_END);
+        int64_t size = (int64_t)ftello(fp);
+        fseeko(fp, 0, SEEK_SET);
+        return size;
+    }
+
+#endif
 
 // MZ definitions
 #define MZ_HEADER "MZ"
-#define MZ_VERSION "1.0.0"
+#define MZ_VERSION "1.1.0"
 
 // MZ buffer size
 #define MZ_BUFFER 1048576
@@ -40,9 +68,10 @@
 #define MZ_FAILURE 1
 
 // MZ Function Declarations
-int mz_archive(char *files[], size_t file_count, char *outfile, int compression);
+int mz_archive(char *files[], uint64_t file_count, char *outfile, int compression);
 int mz_extract(char *mz_file);
 int mz_check_dir(char *filepath);
+int mz_sanitize_path(const char *filepath);
 
 // MZ structs and enums
 typedef enum{
@@ -66,7 +95,7 @@ typedef struct{
 	MZ_FLAG flag;
 	MZ_COM compression;
 	char *files[4096];
-	size_t file_count;
+	uint64_t file_count;
 	char *outfile;
 	char *ERROR_MESSAGE;
 	int EXIT_CODE;
@@ -93,9 +122,12 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 			outputfiledetected = false;
 			continue;
 		}
+		// option parsing
 		if(argument[0] == '-'){
 			char *opt = argument + 1;
 			char *flag = argument + 2;
+			
+			// optional flag parsing
 			if(argument[1] == '-'){
 				if(strcmp(flag, "help") == 0 || strcmp(flag, "h") == 0){
 					if(args.flag != FLAG_NONE){
@@ -171,6 +203,10 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 				return args;
 			}
 		}else{
+			if(args.file_count >= 4096){
+				args.ERROR_MESSAGE = "TOO MANY FILES";
+				return args;
+			}
 			args.files[args.file_count] = argument;
 			args.file_count++;
 		}
@@ -183,6 +219,10 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 // MZ main function
 int main(int argc, char *argv[])
 {
+	if(argc < 2){
+		printf("Use : mz --help for more info\n");
+		return MZ_SUCCESS;
+	}
 	MZ_ARGS args = mz_parse_args(argc, argv);
 	
 	if(args.EXIT_CODE != MZ_SUCCESS){
@@ -228,7 +268,7 @@ int main(int argc, char *argv[])
 			fprintf(stderr, "Error : No Files Passed\n");
 			return MZ_FAILURE;
 		}
-		for(size_t i = 0 ; i < args.file_count; i++){
+		for(uint64_t i = 0 ; i < args.file_count; i++){
 			int extract = mz_extract(args.files[i]);
 			if(extract != 0){
 				fprintf(stderr, "Error : Unable to Extract %s\n", args.files[i]);
@@ -241,7 +281,7 @@ int main(int argc, char *argv[])
 }
 
 // MZ File Archiving Function
-int mz_archive(char *files[], size_t file_count, char *outfile, int compression)
+int mz_archive(char *files[], uint64_t file_count, char *outfile, int compression)
 {
 	FILE *out = fopen(outfile, "wb");
 	if(!out){
@@ -261,7 +301,7 @@ int mz_archive(char *files[], size_t file_count, char *outfile, int compression)
 		return MZ_FAILURE;
 	}
 	
-	if(fwrite(&file_count, sizeof(size_t), 1, out) != 1){
+	if(fwrite(&file_count, sizeof(uint64_t), 1, out) != 1){
 		fprintf(stderr, "Error : Unable to write file count\n");
 		fclose(out);
 		return MZ_FAILURE;
@@ -277,16 +317,16 @@ int mz_archive(char *files[], size_t file_count, char *outfile, int compression)
 	for(size_t file = 0; file < file_count; file++){
 		
 		char *filename = files[file];
-		int filenamelength = strlen(filename);
+		uint64_t filenamelength = strlen(filename);
 		
-		if(fwrite(&filenamelength, sizeof(int), 1, out) != 1){
+		if(fwrite(&filenamelength, sizeof(uint64_t), 1, out) != 1){
 			fprintf(stderr, "Error : Unable to write file name length\n");
 			fclose(out);
 			free(buffer);
 			return MZ_FAILURE;
 		}
 		
-		if(fwrite(filename, sizeof(char), filenamelength, out) != (size_t)filenamelength){
+		if(fwrite(filename, sizeof(char), filenamelength, out) != filenamelength){
 			fprintf(stderr, "Error : Unable to write file name\n");
 			fclose(out);
 			free(buffer);
@@ -301,11 +341,9 @@ int mz_archive(char *files[], size_t file_count, char *outfile, int compression)
 			return MZ_FAILURE;
 		}
 		
-		fseek(in, 0, SEEK_END);
-		long filecontentsize = ftell(in);
-		fseek(in, 0, SEEK_SET);
+		int64_t filecontentsize = mz_file_size(in);
 		
-		if(fwrite(&filecontentsize, sizeof(long), 1, out) != 1){
+		if(fwrite(&filecontentsize, sizeof(int64_t), 1, out) != 1){
 			fprintf(stderr, "Error : Unable to write file content size\n");
 			fclose(out);
 			free(buffer);
@@ -313,9 +351,9 @@ int mz_archive(char *files[], size_t file_count, char *outfile, int compression)
 			return MZ_FAILURE;
 		}
 		
-		long remaining = filecontentsize;
+		int64_t remaining = filecontentsize;
 		while(remaining != 0){
-			long chunk = MZ_BUFFER > remaining ? remaining : MZ_BUFFER;
+			int64_t chunk = MZ_BUFFER > remaining ? remaining : MZ_BUFFER;
 			if(fread(buffer, chunk, 1, in) != 1){
 				fprintf(stderr, "Error : Unable to read file content\n");
 				fclose(out);
@@ -350,7 +388,7 @@ int mz_extract(char *mz_file)
 	
 	char check_header[2];
 	int check_compression;
-	size_t file_count;
+	uint64_t file_count;
 	
 	if(fread(check_header, sizeof(char), 2, in) != 2){
 		fprintf(stderr, "Error : Invalid Header\n");
@@ -358,7 +396,7 @@ int mz_extract(char *mz_file)
 		return MZ_FAILURE;
 	}
 	
-	if(strcmp(check_header, MZ_HEADER) != 0){
+	if(memcmp(check_header, MZ_HEADER, 2) != 0){
 		fprintf(stderr, "Error : Invalid Header\n");
 		fclose(in);
 		return MZ_FAILURE;
@@ -376,7 +414,7 @@ int mz_extract(char *mz_file)
 		return MZ_FAILURE;
 	}
 	
-	if(fread(&file_count, sizeof(size_t), 1, in) != 1){
+	if(fread(&file_count, sizeof(uint64_t), 1, in) != 1){
 		fprintf(stderr, "Error : Invalid File Count\n");
 		fclose(in);		
 		return MZ_FAILURE;
@@ -389,29 +427,45 @@ int mz_extract(char *mz_file)
 		return MZ_FAILURE;
 	}
 	
-	for(size_t file = 0; file < file_count; file++){
-		int filenamelength;
-		if(fread(&filenamelength, sizeof(int), 1, in) != 1){
+	for(uint64_t file = 0; file < file_count; file++){
+		uint64_t filenamelength;
+		if(fread(&filenamelength, sizeof(uint64_t), 1, in) != 1){
 			fprintf(stderr, "Error : Unable to read filenamelength\n");
 			fclose(in);	
 			free(buffer);			
 			return MZ_FAILURE;
 		}
 		
-		char filename[filenamelength + 1];
-		if(fread(filename, sizeof(char), filenamelength, in) != (size_t)filenamelength){
+		char *filename = malloc(filenamelength + 1);
+		if(!filename){
 			fprintf(stderr, "Error : Unable to read filename\n");
 			fclose(in);	
 			free(buffer);			
 			return MZ_FAILURE;
 		}
+		if(fread(filename, sizeof(char), filenamelength, in) != (size_t)filenamelength){
+			fprintf(stderr, "Error : Unable to read filename\n");
+			fclose(in);	
+			free(buffer);	
+			free(filename);
+			return MZ_FAILURE;
+		}
 		filename[filenamelength] = '\0';
 		
-		int filecontentsize;
-		if(fread(&filecontentsize, sizeof(int), 1, in) != 1){
+		int64_t filecontentsize;
+		if(fread(&filecontentsize, sizeof(int64_t), 1, in) != 1){
 			fprintf(stderr, "Error : Unable to read filecontentsize\n");
 			fclose(in);		
 			free(buffer);
+			free(filename);
+			return MZ_FAILURE;
+		}
+		
+		if(mz_sanitize_path(filename) == MZ_FAILURE){
+			fprintf(stderr, "Error : Dangerous filepath\n");
+			fclose(in);		
+			free(buffer);
+			free(filename);
 			return MZ_FAILURE;
 		}
 		
@@ -422,17 +476,19 @@ int mz_extract(char *mz_file)
 			fprintf(stderr, "Error : Unable to Open file\n");
 			fclose(in);	
 			free(buffer);
+			free(filename);
 			return MZ_FAILURE;
 		}
 		
-		long remaining = filecontentsize;
+		int64_t remaining = filecontentsize;
 		while(remaining != 0){
-			long chunk = MZ_BUFFER > remaining ? remaining : MZ_BUFFER;
+			int64_t chunk = MZ_BUFFER > remaining ? remaining : MZ_BUFFER;
 			if(fread(buffer, chunk, 1, in) != 1){
 				fprintf(stderr, "Error : Unable to read file content\n");
 				fclose(out);
 				free(buffer);
 				fclose(in);
+				free(filename);
 				return MZ_FAILURE;
 			}
 			if(fwrite(buffer, chunk, 1, out) != 1){
@@ -440,27 +496,54 @@ int mz_extract(char *mz_file)
 				fclose(out);
 				free(buffer);
 				fclose(in);
+				free(filename);
 				return MZ_FAILURE;
 			}
 			remaining -= chunk;
 		}
-		
+		free(filename);
 		fclose(out);
 	}
-		
+	fclose(in);
+	free(buffer);
 	return MZ_SUCCESS;
 }
 
-// MZ making directory of filepath function
-int mz_check_dir(char filepath[])
+// MZ function for making directory of filepath
+int mz_check_dir(char *filepath)
 {
-	int filepathsize = strlen(filepath);
-	for(int i = 0; i < filepathsize; i++){
-		if(filepath[i] == '/'){
-			filepath[i] = '\0';
-			mkdir(filepath);
-			filepath[i] = '/';
-		}
-	}
-	return 0;
+    int filepathsize = strlen(filepath);
+
+    for(int i = 0; i < filepathsize; i++)
+    {
+        if(filepath[i] == '/' || filepath[i] == '\\')
+        {
+            filepath[i] = '\0';
+            mz_mkdir(filepath);
+            filepath[i] = '/';
+        }
+    }
+
+    return 0;
+}
+
+// MZ function for path sanitization
+int mz_sanitize_path(const char *filepath)
+{
+    if (strstr(filepath, "../") != NULL)
+        return MZ_FAILURE;
+
+    if (strstr(filepath, "..\\") != NULL)
+        return MZ_FAILURE;
+
+    if (strlen(filepath) >= 2 && filepath[1] == ':')
+        return MZ_FAILURE;
+
+    if (filepath[0] == '/')
+        return MZ_FAILURE;
+
+    if (strncmp(filepath, "\\\\", 2) == 0)
+        return MZ_FAILURE;
+
+    return MZ_SUCCESS;
 }
