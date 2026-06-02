@@ -1,21 +1,50 @@
+/*
+	MIT License
+
+	Copyright (c) 2026 Moinak Debnath
+
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <dirent.h>
 #include <stdbool.h>
 
+// MZ definitions
 #define MZ_HEADER "MZ"
 #define MZ_VERSION "1.0.0"
 
+// MZ buffer size
 #define MZ_BUFFER 1048576
 
+// MZ Exit Codes
 #define MZ_SUCCESS 0
 #define MZ_FAILURE 1
 
+// MZ Function Declarations
 int mz_archive(char *files[], size_t file_count, char *outfile, int compression);
 int mz_extract(char *mz_file);
 int mz_check_dir(char *filepath);
 
+// MZ structs and enums
 typedef enum{
 	MODE_NONE,
 	MODE_ARCHIVE,
@@ -43,6 +72,7 @@ typedef struct{
 	int EXIT_CODE;
 } MZ_ARGS;
 
+// MZ parsing arguments function
 MZ_ARGS mz_parse_args(int argc, char *argv[])
 {
 	MZ_ARGS args = {0};
@@ -150,6 +180,7 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 	return args;
 }
 
+// MZ main function
 int main(int argc, char *argv[])
 {
 	MZ_ARGS args = mz_parse_args(argc, argv);
@@ -197,7 +228,7 @@ int main(int argc, char *argv[])
 			fprintf(stderr, "Error : No Files Passed\n");
 			return MZ_FAILURE;
 		}
-		for(int i = 0 ; i < args.file_count; i++){
+		for(size_t i = 0 ; i < args.file_count; i++){
 			int extract = mz_extract(args.files[i]);
 			if(extract != 0){
 				fprintf(stderr, "Error : Unable to Extract %s\n", args.files[i]);
@@ -209,6 +240,7 @@ int main(int argc, char *argv[])
 	return MZ_SUCCESS;
 }
 
+// MZ File Archiving Function
 int mz_archive(char *files[], size_t file_count, char *outfile, int compression)
 {
 	FILE *out = fopen(outfile, "wb");
@@ -254,7 +286,7 @@ int mz_archive(char *files[], size_t file_count, char *outfile, int compression)
 			return MZ_FAILURE;
 		}
 		
-		if(fwrite(filename, sizeof(char), filenamelength, out) != filenamelength){
+		if(fwrite(filename, sizeof(char), filenamelength, out) != (size_t)filenamelength){
 			fprintf(stderr, "Error : Unable to write file name\n");
 			fclose(out);
 			free(buffer);
@@ -307,6 +339,7 @@ int mz_archive(char *files[], size_t file_count, char *outfile, int compression)
 	return MZ_SUCCESS;
 }
 
+// MZ File Extracting Function
 int mz_extract(char *mz_file)
 {
 	FILE *in = fopen(mz_file, "rb");
@@ -356,7 +389,7 @@ int mz_extract(char *mz_file)
 		return MZ_FAILURE;
 	}
 	
-	for(int file = 0; file < file_count; file++){
+	for(size_t file = 0; file < file_count; file++){
 		int filenamelength;
 		if(fread(&filenamelength, sizeof(int), 1, in) != 1){
 			fprintf(stderr, "Error : Unable to read filenamelength\n");
@@ -366,7 +399,7 @@ int mz_extract(char *mz_file)
 		}
 		
 		char filename[filenamelength + 1];
-		if(fread(filename, sizeof(char), filenamelength, in) != filenamelength){
+		if(fread(filename, sizeof(char), filenamelength, in) != (size_t)filenamelength){
 			fprintf(stderr, "Error : Unable to read filename\n");
 			fclose(in);	
 			free(buffer);			
@@ -418,6 +451,7 @@ int mz_extract(char *mz_file)
 	return MZ_SUCCESS;
 }
 
+// MZ making directory of filepath function
 int mz_check_dir(char filepath[])
 {
 	int filepathsize = strlen(filepath);
