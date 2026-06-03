@@ -14,6 +14,7 @@
 2) Extracting an archived file safely.
 3) Basic Path Sanitization
 4) Cross Compatible on Windows and Linux
+5) Can store upto 4096 files at a time in a single archive
 
 ## Compile
 ```bash
