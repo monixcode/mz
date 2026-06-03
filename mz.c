@@ -30,7 +30,7 @@
 
 // Essential imports and wrappers for windows
 #ifdef _WIN32
-	#include <direct.h>
+    #include <direct.h>
     #define mz_mkdir(path) _mkdir(path)
 
     int64_t mz_file_size(FILE *fp)
@@ -58,7 +58,7 @@
 
 // MZ definitions
 #define MZ_HEADER "MZ"
-#define MZ_VERSION "1.1.0"
+#define MZ_VERSION "1.1.1"
 
 // MZ buffer size
 #define MZ_BUFFER 1048576
@@ -231,14 +231,34 @@ int main(int argc, char *argv[])
 	}
 	
 	if(args.flag == FLAG_HELP){
-		printf("\n                  MZ ARCHIVER \n\n");
-		printf("A File Archiver Tool to bundle many files in a single file \n\n");
-		printf("Options:-\n\n");
-		printf("     For Archiving :- mz -archive/-a file.txt .... -output/-o outputfile.mz\n\n");
-		printf("     For Extracting :- mz -extract/-x file.mz ....\n\n");
-		printf("Optional Flags:\n\n");
-		printf("     mz --help/--h\n\n");
-		printf("     mz --version/--v\n\n");
+		printf("MZ - File Archiver\n");
+		printf("Bundle multiple files into a single archive.\n\n");
+
+		printf("USAGE:\n");
+		printf("  mz [OPTION] [FILES] ...\n\n");
+
+		printf("OPTIONS:\n");
+		printf("  -a, -archive <files> -o <archive.mz>\n");
+		printf("      Archive one or more files into an MZ archive.\n\n");
+
+		printf("  -x, -extract <archive.mz>\n");
+		printf("      Extract files from an MZ archive.\n\n");
+
+		printf("OPTIONALS:\n");
+		printf("  -o, -output <file>\n");
+		printf("      Specify the output archive file.\n\n");
+
+		printf("  --help, --h\n");
+		printf("      Display this help message.\n\n");
+
+		printf("  --version, --v\n");
+		printf("      Display version information.\n\n");
+
+		printf("EXAMPLES:\n");
+		printf("  mz -a file1.txt file2.txt -o archive.mz\n");
+		printf("  mz -archive image.png doc.pdf -output backup.mz\n");
+		printf("  mz -x archive.mz\n");
+		printf("  mz -extract backup.mz\n");
 		return MZ_SUCCESS;
 		
 	}else if(args.flag == FLAG_VERSION){
@@ -330,6 +350,14 @@ int mz_archive(char *files[], uint64_t file_count, char *outfile, int compressio
 			fprintf(stderr, "Error : Unable to write file name\n");
 			fclose(out);
 			free(buffer);
+			return MZ_FAILURE;
+		}
+		
+		if(mz_sanitize_path(filename) == MZ_FAILURE){
+			fprintf(stderr, "Error : Dangerous filepath\n");	
+			free(buffer);
+			fclose(out);
+			remove(outfile);
 			return MZ_FAILURE;
 		}
 		
