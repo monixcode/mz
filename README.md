@@ -3,11 +3,11 @@
 <img width="320" height="180" alt="mz" src="https://github.com/user-attachments/assets/de077a1b-6450-44cb-bb21-de39342a85d5" />
 
 ## Version
-1.1.0
+1.1.1
 
 ## Changelog
-1) Added Cross Compatible Features
-2) Added Basic Path Sanitization features
+1) Proper --help section
+2) Added Basic Path Sanitization on mz_archive function
 
 ## Features
 1) Archiving Many Files into a Single File.
