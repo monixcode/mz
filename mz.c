@@ -52,7 +52,7 @@
 
 // MZ definitions
 #define MZ_HEADER "MZ"
-#define MZ_VERSION "1.2.1"
+#define MZ_VERSION "1.3.1"
 
 // MZ buffer size
 #define MZ_BUFFER 1048576
@@ -414,6 +414,13 @@ int mz_archive(char *files[], uint64_t file_count, char *outfile, int compressio
 	for(size_t file = 0; file < file_count; file++){
 
 		char *filename = files[file];
+		FILE *in = fopen(filename, "rb");
+		if(!in){
+			fprintf(stderr, "Error : Unable to read '%s'\n", filename);
+			fclose(out);
+			free(buffer);
+			return MZ_FAILURE;
+		}
 		uint64_t filenamelength = strlen(filename);
 
 		if(fwrite(&filenamelength, sizeof(uint64_t), 1, out) != 1){
@@ -425,22 +432,6 @@ int mz_archive(char *files[], uint64_t file_count, char *outfile, int compressio
 
 		if(fwrite(filename, sizeof(char), filenamelength, out) != filenamelength){
 			fprintf(stderr, "Error : Unable to write file name\n");
-			fclose(out);
-			free(buffer);
-			return MZ_FAILURE;
-		}
-
-		if(mz_sanitize_path(filename) == MZ_FAILURE){
-			fprintf(stderr, "Error : Dangerous filepath\n");
-			free(buffer);
-			fclose(out);
-			remove(outfile);
-			return MZ_FAILURE;
-		}
-
-		FILE *in = fopen(filename, "rb");
-		if(!in){
-			fprintf(stderr, "Error : Unable to read input file\n");
 			fclose(out);
 			free(buffer);
 			return MZ_FAILURE;
@@ -567,11 +558,10 @@ int mz_extract(char *mz_file)
 		}
 
 		if(mz_sanitize_path(filename) == MZ_FAILURE){
-			fprintf(stderr, "Error : Dangerous filepath\n");
-			fclose(in);
-			free(buffer);
+			fprintf(stderr, "Warning : Dangerous filepath , Skipping %s\n", filename);
+			fseek(in, (int)filecontentsize, SEEK_CUR);
 			free(filename);
-			return MZ_FAILURE;
+			continue;
 		}
 
 		mz_check_dir(filename);
