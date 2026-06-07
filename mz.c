@@ -23,10 +23,12 @@
 */
 
 #include <stdio.h>
+#include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <inttypes.h>
 
 // Essential imports and wrappers for windows and linux for cross compatibility
 #ifdef _WIN32
@@ -52,7 +54,7 @@
 
 // MZ definitions
 #define MZ_HEADER "MZ"
-#define MZ_VERSION "1.3.1"
+#define MZ_VERSION "1.3.2"
 
 // MZ buffer size
 #define MZ_BUFFER 1048576
@@ -60,6 +62,7 @@
 // MZ Exit Codes
 #define MZ_SUCCESS 0
 #define MZ_FAILURE 1
+#define MZ_WARNING 2
 
 // MZ structs and enums
 
@@ -91,7 +94,6 @@ typedef struct{
 	char *files[4096];
 	uint64_t file_count;
 	char *outfile;
-	char *ERROR_MESSAGE;
 	int EXIT_CODE;
 } MZ_ARGS;
 
@@ -118,37 +120,54 @@ int mz_check_dir(char *filepath)
     {
         if(filepath[i] == '/' || filepath[i] == '\\')
         {
+			char sep = filepath[i];
             filepath[i] = '\0';
-            mz_mkdir(filepath);
-            filepath[i] = '/';
+            if(mz_mkdir(filepath) != 0 && errno != EEXIST){
+				fprintf(stderr, "Error while creating Directories : Unable to create %s\n", filepath);
+				filepath[i] = '/';
+				return MZ_FAILURE;
+			}
+            filepath[i] = sep;
         }
     }
 
-    return 0;
+    return MZ_SUCCESS;
 }
 
 // MZ function for path sanitization
+// Error message prefix :- Warning while sanitizing
 int mz_sanitize_path(const char *filepath)
 {
-    if (strstr(filepath, "../") != NULL)
-        return MZ_FAILURE;
+    if (strstr(filepath, "../") != NULL){
+		fprintf(stderr, "Warning while sanitizing : ../ -> Bad Filepath used in %s\n", filepath);
+        return MZ_WARNING;
+	}
 
-    if (strstr(filepath, "..\\") != NULL)
-        return MZ_FAILURE;
+    if (strstr(filepath, "..\\") != NULL){
+		fprintf(stderr, "Warning while sanitizing : ..\\ -> Bad Filepath used in %s\n", filepath);
+        return MZ_WARNING;
+	}
 
-    if (strlen(filepath) >= 2 && filepath[1] == ':')
-        return MZ_FAILURE;
+    if (strlen(filepath) >= 2 && filepath[1] == ':'){
+		fprintf(stderr, "Warning while sanitizing : Absolute path - [%s] ,it can lead to bad extraction\n", filepath);
+        return MZ_WARNING;
+	}
 
-    if (filepath[0] == '/')
-        return MZ_FAILURE;
+    if (filepath[0] == '/'){
+		fprintf(stderr, "Warning while sanitizing : Absolute path - [%s] ,it can lead to bad extraction\n", filepath);
+        return MZ_WARNING;
+	}
 
-    if (strncmp(filepath, "\\\\", 2) == 0)
-        return MZ_FAILURE;
+    if (strncmp(filepath, "\\\\", 2) == 0){
+		fprintf(stderr, "Warning while sanitizing : \\\\ -> Bad Filepath used in %s\n", filepath);
+        return MZ_WARNING;
+	}
 
     return MZ_SUCCESS;
 }
 
 // MZ parsing arguments function
+// Error message prefix :- Error while parsing
 MZ_ARGS mz_parse_args(int argc, char *argv[])
 {
 	MZ_ARGS args = {0};
@@ -157,7 +176,6 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 	args.compression = COM_NONE;
 	args.file_count = 0;
 	args.outfile = NULL;
-	args.ERROR_MESSAGE = "PARSING INCOMPLETE";
 	args.EXIT_CODE = MZ_FAILURE;
 
 	bool outputfiledetected = false;
@@ -178,41 +196,41 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 			if(argument[1] == '-'){
 				if(strcmp(flag, "help") == 0 || strcmp(flag, "h") == 0){
 					if(args.flag != FLAG_NONE){
-						args.ERROR_MESSAGE = "MULTIPLE OPTIONAL FLAGS";
+						fprintf(stderr, "Error while parsing : MULTIPLE OPTIONAL FLAGS");
 						args.EXIT_CODE = MZ_FAILURE;
 						return args;
 					}
 					if(args.mode != MODE_NONE){
-						args.ERROR_MESSAGE = "MIXED FLAG AND OPTION";
+						fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION");
 						args.EXIT_CODE = MZ_FAILURE;
 						return args;
 					}
 					args.flag = FLAG_HELP;
 				}else if(strcmp(flag, "version") == 0 || strcmp(flag, "v") == 0){
 					if(args.flag != FLAG_NONE){
-						args.ERROR_MESSAGE = "MULTIPLE OPTIONAL FLAGS";
+						fprintf(stderr, "Error while parsing : MULTIPLE OPTIONAL FLAGS");
 						args.EXIT_CODE = MZ_FAILURE;
 						return args;
 					}
 					if(args.mode != MODE_NONE){
-						args.ERROR_MESSAGE = "MIXED FLAG AND OPTION";
+						fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION");
 						args.EXIT_CODE = MZ_FAILURE;
 						return args;
 					}
 					args.flag = FLAG_VERSION;
 				}else{
-					args.ERROR_MESSAGE = "INVALID OPTIONAL FLAG";
+					fprintf(stderr, "Error while parsing : INVALID OPTIONAL FLAG");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 			}else if(strcmp(opt, "archive") == 0 || strcmp(opt, "a") == 0){
 				if(args.mode != MODE_NONE){
-					args.ERROR_MESSAGE = "MULTIPLE MODE OPTIONS";
+					fprintf(stderr, "Error while parsing : MULTIPLE MODE OPTIONS");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 				if(args.flag != FLAG_NONE){
-					args.ERROR_MESSAGE = "MIXED FLAG AND OPTION";
+					fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
@@ -220,12 +238,12 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 				continue;
 			}else if(strcmp(opt, "extract") == 0 || strcmp(opt, "x") == 0){
 				if(args.mode != MODE_NONE){
-					args.ERROR_MESSAGE = "MULTIPLE MODE OPTIONS";
+					fprintf(stderr, "Error while parsing : MULTIPLE MODE OPTIONS");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 				if(args.flag != FLAG_NONE){
-					args.ERROR_MESSAGE = "MIXED FLAG AND OPTION";
+					fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
@@ -233,12 +251,12 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 				continue;
 			}else if(strcmp(opt, "filesin") == 0 || strcmp(opt, "fi") == 0){
 				if(args.mode != MODE_NONE){
-					args.ERROR_MESSAGE = "MULTIPLE MODE OPTIONS";
+					fprintf(stderr, "Error while parsing : MULTIPLE MODE OPTIONS");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 				if(args.flag != FLAG_NONE){
-					args.ERROR_MESSAGE = "MIXED FLAG AND OPTION";
+					fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
@@ -246,37 +264,37 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 				continue;
 			}else if(strcmp(opt, "output") == 0 || strcmp(opt, "o") == 0){
 				if(args.outfile != NULL){
-					args.ERROR_MESSAGE = "MULTIPLE OUTPUTFILE SPECIFIED";
+					fprintf(stderr, "Error while parsing : MULTIPLE OUTPUTFILE SPECIFIED");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 				if(arg == argc - 1){
-					args.ERROR_MESSAGE = "OUTPUTFILENAME NOT SPECIFIED";
+					fprintf(stderr, "Error while parsing : OUTPUTFILENAME NOT SPECIFIED");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 				outputfiledetected = true;
 				continue;
 			}else{
-				args.ERROR_MESSAGE = "INVALID OPTION SPECIFIED";
+				fprintf(stderr, "Error while parsing : INVALID OPTION SPECIFIED");
 				args.EXIT_CODE = MZ_FAILURE;
 				return args;
 			}
 		}else{
 			if(args.file_count >= 4096){
-				args.ERROR_MESSAGE = "TOO MANY FILES";
+				fprintf(stderr, "Error while parsing : TOO MANY FILES");
 				return args;
 			}
 			args.files[args.file_count] = argument;
 			args.file_count++;
 		}
 	}
-	args.ERROR_MESSAGE = NULL;
 	args.EXIT_CODE = MZ_SUCCESS;
 	return args;
 }
 
 // MZ main function
+// Error message prefix :- Error
 int main(int argc, char *argv[])
 {
 	if(argc < 2){
@@ -286,7 +304,6 @@ int main(int argc, char *argv[])
 	MZ_ARGS args = mz_parse_args(argc, argv);
 
 	if(args.EXIT_CODE != MZ_SUCCESS){
-		fprintf(stderr, "Error: %s\n", args.ERROR_MESSAGE);
 		return MZ_FAILURE;
 	}
 
@@ -378,107 +395,117 @@ int main(int argc, char *argv[])
 }
 
 // MZ File Archiving Function
+// Error message prefix :- Error while archiving
 int mz_archive(char *files[], uint64_t file_count, char *outfile, int compression)
 {
-	FILE *out = fopen(outfile, "wb");
+	// For Cleanup references
+	FILE *in = NULL;
+	FILE *out = NULL;
+	char *buffer = NULL;
+	
+	out = fopen(outfile, "wb");
 	if(!out){
-		fprintf(stderr, "Error : Output File Not Opening\n");
+		fprintf(stderr, "Error while archiving : Output File Not Opening\n");
 		return MZ_FAILURE;
 	}
 
 	if(fwrite(MZ_HEADER, sizeof(char), 2, out) != 2){
-		fprintf(stderr, "Error : Unable to write header\n");
-		fclose(out);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while archiving : Unable to write header\n");
+		goto cleanErr;
 	}
 
 	if(fwrite(&compression, sizeof(int), 1, out) != 1){
-		fprintf(stderr, "Error : Unable to write compression details\n");
-		fclose(out);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while archiving : Unable to write compression details\n");
+		goto cleanErr;
 	}
 
 	if(fwrite(&file_count, sizeof(uint64_t), 1, out) != 1){
-		fprintf(stderr, "Error : Unable to write file count\n");
-		fclose(out);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while archiving : Unable to write file count\n");
+		goto cleanErr;
 	}
 
-	char *buffer = malloc(MZ_BUFFER);
+	buffer = malloc(MZ_BUFFER);
 	if(!buffer){
-		fprintf(stderr, "Error : Unable to allocate buffer size\n");
-		fclose(out);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while archiving : Unable to allocate buffer size\n");
+		goto cleanErr;
 	}
 
 	for(size_t file = 0; file < file_count; file++){
 
 		char *filename = files[file];
-		FILE *in = fopen(filename, "rb");
+		
+		if(mz_sanitize_path(filename) == MZ_WARNING){
+			fprintf(stderr, "Error while archiving : Sanitization warning\n");
+			goto cleanErr;
+		}
+		
+		in = fopen(filename, "rb");
 		if(!in){
-			fprintf(stderr, "Error : Unable to read '%s'\n", filename);
-			fclose(out);
-			free(buffer);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while archiving : Unable to read '%s'\n", filename);
+			goto cleanErr;
 		}
 		uint64_t filenamelength = strlen(filename);
 
 		if(fwrite(&filenamelength, sizeof(uint64_t), 1, out) != 1){
-			fprintf(stderr, "Error : Unable to write file name length\n");
-			fclose(out);
-			free(buffer);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while archiving : Unable to write file name length\n");
+			goto cleanErr;
 		}
 
 		if(fwrite(filename, sizeof(char), filenamelength, out) != filenamelength){
-			fprintf(stderr, "Error : Unable to write file name\n");
-			fclose(out);
-			free(buffer);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while archiving : Unable to write file name\n");
+			goto cleanErr;
 		}
 
 		int64_t filecontentsize = mz_file_size(in);
 
 		if(fwrite(&filecontentsize, sizeof(int64_t), 1, out) != 1){
-			fprintf(stderr, "Error : Unable to write file content size\n");
-			fclose(out);
-			free(buffer);
-			fclose(in);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while archiving : Unable to write file content size\n");
+			goto cleanErr;
 		}
 
 		int64_t remaining = filecontentsize;
 		while(remaining != 0){
 			int64_t chunk = MZ_BUFFER > remaining ? remaining : MZ_BUFFER;
 			if(fread(buffer, chunk, 1, in) != 1){
-				fprintf(stderr, "Error : Unable to read file content\n");
-				fclose(out);
-				free(buffer);
-				fclose(in);
-				return MZ_FAILURE;
+				fprintf(stderr, "Error while archiving : Unable to read file content\n");
+				goto cleanErr;
 			}
 			if(fwrite(buffer, chunk, 1, out) != 1){
-				fprintf(stderr, "Error : Unable to write file content\n");
-				fclose(out);
-				free(buffer);
-				fclose(in);
-				return MZ_FAILURE;
+				fprintf(stderr, "Error while archiving : Unable to write file content\n");
+				goto cleanErr;
 			}
 			remaining -= chunk;
 		}
 		fclose(in);
+		in = NULL;
 	}
 	fclose(out);
 	free(buffer);
 	return MZ_SUCCESS;
+	
+cleanErr:
+    if(out){
+        fclose(out);
+        remove(outfile);
+    }
+	if(in != NULL) fclose(in);
+	if(buffer != NULL) free(buffer);
+	return MZ_FAILURE;
 }
 
 // MZ File Extracting Function
+// Error message prefix :- Error while extracting
 int mz_extract(char *mz_file)
 {
-	FILE *in = fopen(mz_file, "rb");
+	// For Cleanup references
+	FILE *out = NULL;
+	char *buffer = NULL;
+	char *filename = NULL;
+	FILE *in = NULL;
+	
+	in = fopen(mz_file, "rb");
 	if(!in){
-		fprintf(stderr, "Error : Unable to Open Archive File\n");
+		fprintf(stderr, "Error while extracting : Unable to Open Archive File\n");
 		return MZ_FAILURE;
 	}
 
@@ -487,128 +514,128 @@ int mz_extract(char *mz_file)
 	uint64_t file_count;
 
 	if(fread(check_header, sizeof(char), 2, in) != 2){
-		fprintf(stderr, "Error : Invalid Header\n");
-		fclose(in);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while extracting : Invalid Header\n");
+		goto cleanErr;
 	}
 
 	if(memcmp(check_header, MZ_HEADER, 2) != 0){
-		fprintf(stderr, "Error : Invalid Header\n");
-		fclose(in);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while extracting : Invalid Header\n");
+		goto cleanErr;
 	}
 
 	if(fread(&check_compression, sizeof(int), 1, in) != 1){
-		fprintf(stderr, "Error : Invalid Compression\n");
-		fclose(in);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while extracting : Invalid Compression\n");
+		goto cleanErr;
 	}
 
 	if(check_compression != 0){
-		fprintf(stderr, "Error : Invalid Compression\n");
-		fclose(in);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while extracting : Invalid Compression\n");
+		goto cleanErr;
 	}
 
 	if(fread(&file_count, sizeof(uint64_t), 1, in) != 1){
-		fprintf(stderr, "Error : Invalid File Count\n");
-		fclose(in);
-		return MZ_FAILURE;
+		goto cleanErr;
 	}
 
-	char *buffer = malloc(MZ_BUFFER);
+	buffer = malloc(MZ_BUFFER);
 	if(!buffer){
-		fprintf(stderr, "Error : Unable to allocate buffer size\n");
-		fclose(in);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while extracting : Unable to allocate buffer size\n");
+		goto cleanErr;
 	}
 
 	for(uint64_t file = 0; file < file_count; file++){
 		uint64_t filenamelength;
 		if(fread(&filenamelength, sizeof(uint64_t), 1, in) != 1){
-			fprintf(stderr, "Error : Unable to read filenamelength\n");
-			fclose(in);
-			free(buffer);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while extracting : Unable to read filenamelength\n");
+			goto cleanErr;
+		}
+		
+		if(filenamelength > 4096){
+			fprintf(stderr, "Error while extracting : Invalid filename length\n");
+			goto cleanErr;
 		}
 
-		char *filename = malloc(filenamelength + 1);
+		filename = malloc(filenamelength + 1);
 		if(!filename){
-			fprintf(stderr, "Error : Unable to read filename\n");
-			fclose(in);
-			free(buffer);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while extracting : Unable to read filename\n");
+			goto cleanErr;
 		}
 		if(fread(filename, sizeof(char), filenamelength, in) != (size_t)filenamelength){
-			fprintf(stderr, "Error : Unable to read filename\n");
-			fclose(in);
-			free(buffer);
-			free(filename);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while extracting : Unable to read filename\n");
+			goto cleanErr;
 		}
 		filename[filenamelength] = '\0';
 
 		int64_t filecontentsize;
 		if(fread(&filecontentsize, sizeof(int64_t), 1, in) != 1){
-			fprintf(stderr, "Error : Unable to read filecontentsize\n");
-			fclose(in);
-			free(buffer);
-			free(filename);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while extracting : Unable to read filecontentsize\n");
+			goto cleanErr;
+		}
+		
+		if(filecontentsize < 0){
+			fprintf(stderr, "Error while extracting : Invalid file size\n");
+			goto cleanErr;
 		}
 
-		if(mz_sanitize_path(filename) == MZ_FAILURE){
-			fprintf(stderr, "Warning : Dangerous filepath , Skipping %s\n", filename);
-			fseek(in, (int)filecontentsize, SEEK_CUR);
+		if(mz_sanitize_path(filename) == MZ_WARNING){
+			fprintf(stderr, "Warning while extracting : Skipping %s\n", filename);
+			mz_fseek(in, filecontentsize, SEEK_CUR);
 			free(filename);
+			filename = NULL;
 			continue;
 		}
 
-		mz_check_dir(filename);
+		if(mz_check_dir(filename) != MZ_SUCCESS){
+			goto cleanErr;
+		}
 
-		FILE *out = fopen(filename, "wb");
+		out = fopen(filename, "wb");
 		if(!out){
-			fprintf(stderr, "Error : Unable to Open file\n");
-			fclose(in);
-			free(buffer);
-			free(filename);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while extracting : Unable to Open file\n");
+			goto cleanErr;
 		}
 
 		int64_t remaining = filecontentsize;
 		while(remaining != 0){
 			int64_t chunk = MZ_BUFFER > remaining ? remaining : MZ_BUFFER;
 			if(fread(buffer, chunk, 1, in) != 1){
-				fprintf(stderr, "Error : Unable to read file content\n");
-				fclose(out);
-				free(buffer);
-				fclose(in);
-				free(filename);
-				return MZ_FAILURE;
+				fprintf(stderr, "Error while extracting : Unable to read file content\n");
+				goto cleanErr;
 			}
 			if(fwrite(buffer, chunk, 1, out) != 1){
-				fprintf(stderr, "Error : Unable to write file content\n");
-				fclose(out);
-				free(buffer);
-				fclose(in);
-				free(filename);
-				return MZ_FAILURE;
+				fprintf(stderr, "Error while extracting : Unable to write file content\n");
+				goto cleanErr;
 			}
 			remaining -= chunk;
 		}
 		free(filename);
+		filename = NULL;
 		fclose(out);
+		out = NULL;
 	}
 	fclose(in);
 	free(buffer);
 	return MZ_SUCCESS;
+	
+cleanErr:
+    if(out) fclose(out);
+	if(in != NULL) fclose(in);
+	if(buffer != NULL) free(buffer);
+	if(filename != NULL) free(filename);
+	return MZ_FAILURE;
 }
 
+// MZ function for printing number of files and their names stored in an archive file 
+// Error message prefix :- Error while checking files
 int mz_filesin(char *mz_file)
 {
-	FILE *in = fopen(mz_file, "rb");
+	// For Cleanup references
+	FILE *in = NULL;
+	char *filename = NULL;
+	
+	in = fopen(mz_file, "rb");
 	if(!in){
-		fprintf(stderr, "Error : Unable to Open Archive File\n");
+		fprintf(stderr, "Error while checking files : Unable to Open Archive File\n");
 		return MZ_FAILURE;
 	}
 
@@ -617,69 +644,65 @@ int mz_filesin(char *mz_file)
 	uint64_t file_count;
 
 	if(fread(check_header, sizeof(char), 2, in) != 2){
-		fprintf(stderr, "Error : Invalid Header\n");
-		fclose(in);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while checking files : Invalid Header\n");
+		goto cleanErr;
 	}
 
 	if(memcmp(check_header, MZ_HEADER, 2) != 0){
-		fprintf(stderr, "Error : Invalid Header\n");
-		fclose(in);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while checking files : Invalid Header\n");
+		goto cleanErr;
 	}
 
 	if(fread(&check_compression, sizeof(int), 1, in) != 1){
-		fprintf(stderr, "Error : Invalid Compression\n");
-		fclose(in);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while checking files : Invalid Compression\n");
+		goto cleanErr;
 	}
 
 	if(check_compression != 0){
-		fprintf(stderr, "Error : Invalid Compression\n");
-		fclose(in);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while checking files : Invalid Compression\n");
+		goto cleanErr;
 	}
 
 	if(fread(&file_count, sizeof(uint64_t), 1, in) != 1){
-		fprintf(stderr, "Error : Invalid File Count\n");
-		fclose(in);
-		return MZ_FAILURE;
+		fprintf(stderr, "Error while checking files : Invalid File Count\n");
+		goto cleanErr;
 	}
-	printf("Files in %s : %lu\n", mz_file, file_count);
+	printf("Files in %s : %" PRIu64 "\n", mz_file, file_count);
 
 	for(uint64_t file = 0; file < file_count; file++){
 		uint64_t filenamelength;
 		if(fread(&filenamelength, sizeof(uint64_t), 1, in) != 1){
-			fprintf(stderr, "Error : Unable to read filenamelength\n");
-			fclose(in);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while checking files : Unable to read filenamelength\n");
+			goto cleanErr;
 		}
 
-		char *filename = malloc(filenamelength + 1);
+		filename = malloc(filenamelength + 1);
 		if(!filename){
-			fprintf(stderr, "Error : Unable to read filename\n");
-			fclose(in);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while checking files : Unable to read filename\n");
+			goto cleanErr;
 		}
 		if(fread(filename, sizeof(char), filenamelength, in) != (size_t)filenamelength){
-			fprintf(stderr, "Error : Unable to read filename\n");
-			fclose(in);
-			free(filename);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while checking files : Unable to read filename\n");
+			goto cleanErr;
 		}
 		filename[filenamelength] = '\0';
 
 		int64_t filecontentsize;
 		if(fread(&filecontentsize, sizeof(int64_t), 1, in) != 1){
-			fprintf(stderr, "Error : Unable to read filecontentsize\n");
-			fclose(in);
-			free(filename);
-			return MZ_FAILURE;
+			fprintf(stderr, "Error while checking files : Unable to read filecontentsize\n");
+			goto cleanErr;
 		}
 		
-		mz_fseek(in, (int)filecontentsize, SEEK_CUR);
+		mz_fseek(in, filecontentsize, SEEK_CUR);
 		printf("%s\n", filename);
+		free(filename);
+		filename = NULL;
 	}
 	fclose(in);
 	return MZ_SUCCESS;
+	
+cleanErr:
+	if(in != NULL) fclose(in);
+	if(filename != NULL) free(filename);
+	return MZ_FAILURE;
 }
