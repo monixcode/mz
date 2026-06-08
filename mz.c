@@ -59,7 +59,7 @@
 
 // MZ definitions
 #define MZ_HEADER "MZ"
-#define MZ_VERSION "2.0.0"
+#define MZ_VERSION "1.4.0"
 
 // MZ buffer size
 #define MZ_BUFFER 1048576
@@ -107,10 +107,10 @@ int mz_extract(char *mz_file);
 int mz_filesin(char *mz_file);
 
 // MZ function for getting filecontent size
-int64_t mz_file_size(FILE *fp)
+uint64_t mz_file_size(FILE *fp)
 {
     mz_fseek(fp, 0, SEEK_END);
-    int64_t size = (int64_t)mz_ftell(fp);
+    uint64_t size = (uint64_t)mz_ftell(fp);
     mz_fseek(fp, 0, SEEK_SET);
     return size;
 }
@@ -128,7 +128,7 @@ int mz_check_dir(char *filepath)
             filepath[i] = '\0';
             if(mz_mkdir(filepath) != 0 && errno != EEXIST){
 				fprintf(stderr, "Error while creating Directories : Unable to create %s\n", filepath);
-				filepath[i] = '/';
+				filepath[i] = sep;
 				return MZ_FAILURE;
 			}
             filepath[i] = sep;
@@ -352,7 +352,8 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 
 		destroy_charv(files_in_folder);
 	}
-
+	
+	destroy_charv(folders);
 	args.EXIT_CODE = MZ_SUCCESS;
 	return args;
 }
@@ -556,16 +557,16 @@ int mz_archive(charv *files, char *outfile, int compression)
 			goto cleanErr;
 		}
 
-		int64_t filecontentsize = mz_file_size(in);
+		uint64_t filecontentsize = mz_file_size(in);
 
-		if(fwrite(&filecontentsize, sizeof(int64_t), 1, out) != 1){
+		if(fwrite(&filecontentsize, sizeof(uint64_t), 1, out) != 1){
 			fprintf(stderr, "Error while archiving : Unable to write file content size\n");
 			goto cleanErr;
 		}
 
-		int64_t remaining = filecontentsize;
+		uint64_t remaining = filecontentsize;
 		while(remaining != 0){
-			int64_t chunk = MZ_BUFFER > remaining ? remaining : MZ_BUFFER;
+			size_t chunk = (remaining > MZ_BUFFER) ? MZ_BUFFER : (size_t)remaining;
 			if(fread(buffer, 1, chunk, in) != chunk){
 				fprintf(stderr, "Error while archiving : Unable to read file content\n");
 				goto cleanErr;
@@ -654,7 +655,7 @@ int mz_extract(char *mz_file)
 			fprintf(stderr, "Error while extracting : Invalid filename length\n");
 			goto cleanErr;
 		}
-
+	
 		filename = malloc(filenamelength + 1);
 		if(!filename){
 			fprintf(stderr, "Error while extracting : Unable to read filename\n");
@@ -666,14 +667,9 @@ int mz_extract(char *mz_file)
 		}
 		filename[filenamelength] = '\0';
 
-		int64_t filecontentsize;
-		if(fread(&filecontentsize, sizeof(int64_t), 1, in) != 1){
+		uint64_t filecontentsize;
+		if(fread(&filecontentsize, sizeof(uint64_t), 1, in) != 1){
 			fprintf(stderr, "Error while extracting : Unable to read filecontentsize\n");
-			goto cleanErr;
-		}
-		
-		if(filecontentsize < 0){
-			fprintf(stderr, "Error while extracting : Invalid file size\n");
 			goto cleanErr;
 		}
 
@@ -695,9 +691,9 @@ int mz_extract(char *mz_file)
 			goto cleanErr;
 		}
 
-		int64_t remaining = filecontentsize;
+		uint64_t remaining = filecontentsize;
 		while(remaining != 0){
-			int64_t chunk = MZ_BUFFER > remaining ? remaining : MZ_BUFFER;
+			size_t chunk = (remaining > MZ_BUFFER) ? MZ_BUFFER : (size_t)remaining;
 			if(fread(buffer, 1, chunk , in) != chunk){
 				fprintf(stderr, "Error while extracting : Unable to read file content\n");
 				goto cleanErr;
@@ -775,7 +771,10 @@ int mz_filesin(char *mz_file)
 			fprintf(stderr, "Error while checking files : Unable to read filenamelength\n");
 			goto cleanErr;
 		}
-
+		if(filenamelength == 0 || filenamelength > 4096){
+			fprintf(stderr, "Error while checking files : Invalid filename length\n");
+			goto cleanErr;
+		}
 		filename = malloc(filenamelength + 1);
 		if(!filename){
 			fprintf(stderr, "Error while checking files : Unable to read filename\n");
@@ -787,8 +786,8 @@ int mz_filesin(char *mz_file)
 		}
 		filename[filenamelength] = '\0';
 
-		int64_t filecontentsize;
-		if(fread(&filecontentsize, sizeof(int64_t), 1, in) != 1){
+		uint64_t filecontentsize;
+		if(fread(&filecontentsize, sizeof(uint64_t), 1, in) != 1){
 			fprintf(stderr, "Error while checking files : Unable to read filecontentsize\n");
 			goto cleanErr;
 		}

@@ -62,12 +62,15 @@ charv *filewalk(const char *path)
 		
 		// Constructing fullpath for STAT function
         char fullpath[1024];
-        if(snprintf(fullpath, sizeof(fullpath), "%s/%s", path, entry->d_name) < 0){
+        int len = snprintf(fullpath, sizeof(fullpath), "%s/%s", path, entry->d_name);
+		if(len < 0 || len >= (int)sizeof(fullpath)){
 			destroy_charv(files);
 			fprintf(stderr, "Error from filewalk : Unable to make fullpath\n");
 			return NULL;
 		}
-
+		
+		// Some systems/toolchains may fail to stat files larger than 2 GB.
+		// If file walking (-r) skips a large file, specify the file directly via (-x)
         struct stat st;
         if (stat(fullpath, &st) == -1){
 			fprintf(stderr, "Warning from filewalk : Unable to stat,  Skipping %s file\n", fullpath);
@@ -92,7 +95,7 @@ charv *filewalk(const char *path)
             charv *sub = filewalk(fullpath); // recursion to own function
             if (sub) {
                 for (size_t i = 0; i < size_charv(sub); i++) {
-					char *files_in_sub = strdup(get_charv(sub, i));
+					char *files_in_sub = get_charv(sub, i);
 					if(!files_in_sub){
 						destroy_charv(files);
 						destroy_charv(sub);
