@@ -388,6 +388,10 @@ int main(int argc, char *argv[])
 		
 		printf("  -fi, -filesin <archive.mz>\n");
 		printf("      Prints number of files and filenames present in the MZ archive.\n\n");
+		
+		printf("  -r, -read <folder>\n");
+		printf("      Collects all the files from the folder and takes them as input files\n");
+		printf("      which helps to archive and extract many files together\n\n");
 
 		printf("OPTIONALS:\n");
 		printf("  -o, -output <file>\n");
@@ -402,8 +406,15 @@ int main(int argc, char *argv[])
 		printf("EXAMPLES:\n");
 		printf("  mz -a file1.txt file2.txt -o archive.mz\n");
 		printf("  mz -archive image.png doc.pdf -output backup.mz\n");
+		printf("  mz -a -read docs -o archive.mz\n\n");
+		
 		printf("  mz -x archive.mz\n");
 		printf("  mz -extract backup.mz\n");
+		printf("  mz -x -read docs\n\n");
+		
+		printf("  mz -fi archive.mz\n");
+		printf("  mz -filesin archive.mz\n");
+		printf("  mz -fi -read mz_files\n");
 		goto cleanSucc;
 
 	}else if(args.flag == FLAG_VERSION){
