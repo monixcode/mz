@@ -1,4 +1,6 @@
 /*
+	File :- mz.c [main controller of the program]
+	
 	MIT License
 
 	Copyright (c) 2026 Moinak Debnath
@@ -30,6 +32,9 @@
 #include <stdbool.h>
 #include <inttypes.h>
 
+// Importing local libraries from lib folder
+#include "lib/global_header.h"
+
 // Essential imports and wrappers for windows and linux for cross compatibility
 #ifdef _WIN32
 
@@ -54,7 +59,7 @@
 
 // MZ definitions
 #define MZ_HEADER "MZ"
-#define MZ_VERSION "1.3.2"
+#define MZ_VERSION "2.0.0"
 
 // MZ buffer size
 #define MZ_BUFFER 1048576
@@ -91,14 +96,13 @@ typedef struct{
 	MZ_MODE mode;
 	MZ_FLAG flag;
 	MZ_COM compression;
-	char *files[4096];
-	uint64_t file_count;
+	charv *files;
 	char *outfile;
 	int EXIT_CODE;
 } MZ_ARGS;
 
 // MZ Function Declarations
-int mz_archive(char *files[], uint64_t file_count, char *outfile, int compression);
+int mz_archive(charv *files, char *outfile, int compression);
 int mz_extract(char *mz_file);
 int mz_filesin(char *mz_file);
 
@@ -174,17 +178,33 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 	args.mode = MODE_NONE;
 	args.flag = FLAG_NONE;
 	args.compression = COM_NONE;
-	args.file_count = 0;
+	args.files = init_charv();
+	charv *folders = init_charv();
+	if(!args.files){
+		fprintf(stderr, "Error while parsing : UNABLE TO INITIALIZE FILES\n");
+		args.EXIT_CODE = MZ_FAILURE;
+		return args;
+	}
 	args.outfile = NULL;
 	args.EXIT_CODE = MZ_FAILURE;
 
 	bool outputfiledetected = false;
+	bool folderdetected = false;
 
 	for(int arg = 1; arg < argc; arg++){
 		char *argument = argv[arg];
 		if(outputfiledetected){
 			args.outfile = argument;
 			outputfiledetected = false;
+			continue;
+		}
+		if(folderdetected){
+			if(push_charv(folders, argument) == -1){
+				fprintf(stderr, "Error while parsing : UNABLE TO PUSH FOLDER NAME\n");
+				args.EXIT_CODE = MZ_FAILURE;
+				return args;
+			}
+			folderdetected = false;
 			continue;
 		}
 		// option parsing
@@ -196,41 +216,41 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 			if(argument[1] == '-'){
 				if(strcmp(flag, "help") == 0 || strcmp(flag, "h") == 0){
 					if(args.flag != FLAG_NONE){
-						fprintf(stderr, "Error while parsing : MULTIPLE OPTIONAL FLAGS");
+						fprintf(stderr, "Error while parsing : MULTIPLE OPTIONAL FLAGS\n");
 						args.EXIT_CODE = MZ_FAILURE;
 						return args;
 					}
 					if(args.mode != MODE_NONE){
-						fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION");
+						fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION\n");
 						args.EXIT_CODE = MZ_FAILURE;
 						return args;
 					}
 					args.flag = FLAG_HELP;
 				}else if(strcmp(flag, "version") == 0 || strcmp(flag, "v") == 0){
 					if(args.flag != FLAG_NONE){
-						fprintf(stderr, "Error while parsing : MULTIPLE OPTIONAL FLAGS");
+						fprintf(stderr, "Error while parsing : MULTIPLE OPTIONAL FLAGS\n");
 						args.EXIT_CODE = MZ_FAILURE;
 						return args;
 					}
 					if(args.mode != MODE_NONE){
-						fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION");
+						fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION\n");
 						args.EXIT_CODE = MZ_FAILURE;
 						return args;
 					}
 					args.flag = FLAG_VERSION;
 				}else{
-					fprintf(stderr, "Error while parsing : INVALID OPTIONAL FLAG");
+					fprintf(stderr, "Error while parsing : INVALID OPTIONAL FLAG\n");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 			}else if(strcmp(opt, "archive") == 0 || strcmp(opt, "a") == 0){
 				if(args.mode != MODE_NONE){
-					fprintf(stderr, "Error while parsing : MULTIPLE MODE OPTIONS");
+					fprintf(stderr, "Error while parsing : MULTIPLE MODE OPTIONS\n");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 				if(args.flag != FLAG_NONE){
-					fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION");
+					fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION\n");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
@@ -238,12 +258,12 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 				continue;
 			}else if(strcmp(opt, "extract") == 0 || strcmp(opt, "x") == 0){
 				if(args.mode != MODE_NONE){
-					fprintf(stderr, "Error while parsing : MULTIPLE MODE OPTIONS");
+					fprintf(stderr, "Error while parsing : MULTIPLE MODE OPTIONS\n");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 				if(args.flag != FLAG_NONE){
-					fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION");
+					fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION\n");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
@@ -251,12 +271,12 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 				continue;
 			}else if(strcmp(opt, "filesin") == 0 || strcmp(opt, "fi") == 0){
 				if(args.mode != MODE_NONE){
-					fprintf(stderr, "Error while parsing : MULTIPLE MODE OPTIONS");
+					fprintf(stderr, "Error while parsing : MULTIPLE MODE OPTIONS\n");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 				if(args.flag != FLAG_NONE){
-					fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION");
+					fprintf(stderr, "Error while parsing : MIXED FLAG AND OPTION\n");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
@@ -264,31 +284,75 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 				continue;
 			}else if(strcmp(opt, "output") == 0 || strcmp(opt, "o") == 0){
 				if(args.outfile != NULL){
-					fprintf(stderr, "Error while parsing : MULTIPLE OUTPUTFILE SPECIFIED");
+					fprintf(stderr, "Error while parsing : MULTIPLE OUTPUTFILE SPECIFIED\n");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 				if(arg == argc - 1){
-					fprintf(stderr, "Error while parsing : OUTPUTFILENAME NOT SPECIFIED");
+					fprintf(stderr, "Error while parsing : OUTPUTFILENAME NOT SPECIFIED\n");
 					args.EXIT_CODE = MZ_FAILURE;
 					return args;
 				}
 				outputfiledetected = true;
 				continue;
+			}else if(strcmp(opt, "read") == 0 || strcmp(opt, "r") == 0){
+				if(arg == argc - 1){
+					fprintf(stderr, "Error while parsing : FOLDERNAME NOT SPECIFIED\n");
+					args.EXIT_CODE = MZ_FAILURE;
+					return args;
+				}
+				folderdetected = true;
+				continue;
 			}else{
-				fprintf(stderr, "Error while parsing : INVALID OPTION SPECIFIED");
+				fprintf(stderr, "Error while parsing : INVALID OPTION SPECIFIED\n");
 				args.EXIT_CODE = MZ_FAILURE;
 				return args;
 			}
 		}else{
-			if(args.file_count >= 4096){
-				fprintf(stderr, "Error while parsing : TOO MANY FILES");
+			if(push_charv(args.files, argument) == -1){
+				fprintf(stderr, "Error while parsing : UNABLE TO PUSH FILE TO HEAP\n");
+				args.EXIT_CODE = MZ_FAILURE;
 				return args;
 			}
-			args.files[args.file_count] = argument;
-			args.file_count++;
 		}
 	}
+	
+	size_t folder_count = size_charv(folders);
+	for(size_t i = 0; i < folder_count; i++)
+	{
+		char *folder = get_charv(folders, i);
+		if(!folder){
+			args.EXIT_CODE = MZ_FAILURE;
+			fprintf(stderr, "Error while parsing : UNABLE TO GET FOLDER\n");
+			return args;
+		}
+		charv *files_in_folder = filewalk(folder);
+		if(!files_in_folder){
+			args.EXIT_CODE = MZ_FAILURE;
+			fprintf(stderr, "Error while parsing : UNABLE TO FILEWALK\n");
+			return args;
+		}
+
+		size_t size = size_charv(files_in_folder);
+
+		for(size_t f = 0; f < size; f++){
+			char *file_in_files = get_charv(files_in_folder, f);
+			if(!file_in_files){
+				args.EXIT_CODE = MZ_FAILURE;
+				fprintf(stderr, "Error while parsing : UNABLE TO GET FILENAME \n");
+				return args;
+			}
+			int r = push_charv(args.files, file_in_files);
+			if(r == -1){
+				args.EXIT_CODE = MZ_FAILURE;
+				fprintf(stderr, "Error while parsing : UNABLE TO PUSH FILE TO HEAP\n");
+				return args;
+			}
+		}
+
+		destroy_charv(files_in_folder);
+	}
+
 	args.EXIT_CODE = MZ_SUCCESS;
 	return args;
 }
@@ -304,6 +368,7 @@ int main(int argc, char *argv[])
 	MZ_ARGS args = mz_parse_args(argc, argv);
 
 	if(args.EXIT_CODE != MZ_SUCCESS){
+		free(args.files);
 		return MZ_FAILURE;
 	}
 
@@ -339,69 +404,89 @@ int main(int argc, char *argv[])
 		printf("  mz -archive image.png doc.pdf -output backup.mz\n");
 		printf("  mz -x archive.mz\n");
 		printf("  mz -extract backup.mz\n");
-		return MZ_SUCCESS;
+		goto cleanSucc;
 
 	}else if(args.flag == FLAG_VERSION){
 		printf("%s - %s\n",MZ_HEADER, MZ_VERSION);
-		return MZ_SUCCESS;
+		goto cleanSucc;
 
 	}else if(args.mode == MODE_ARCHIVE){
 
-		if(args.file_count == 0){
+		if(size_charv(args.files) == 0){
 			fprintf(stderr, "Error : No Files Passed\n");
-			return MZ_FAILURE;
+			goto cleanFail;
 		}
 
 		if(args.outfile == NULL){
 			fprintf(stderr, "Error : No Output File Passed\n");
-			return MZ_FAILURE;
+			goto cleanFail;
 		}
-		int archive = mz_archive(args.files, args.file_count, args.outfile, args.compression);
+		int archive = mz_archive(args.files, args.outfile, args.compression);
 		if(archive != 0){
 			fprintf(stderr, "Error : Unable to Archive\n");
-			return MZ_FAILURE;
+			goto cleanFail;
 		}
-		return MZ_SUCCESS;
+		goto cleanSucc;
 	}else if(args.mode == MODE_EXTRACT){
-
-		if(args.file_count == 0){
+		
+		size_t size = size_charv(args.files);
+		if(size == 0){
 			fprintf(stderr, "Error : No Files Passed\n");
-			return MZ_FAILURE;
+			goto cleanFail;
 		}
-		for(uint64_t i = 0 ; i < args.file_count; i++){
-			int extract = mz_extract(args.files[i]);
+		for(uint64_t i = 0 ; i < size; i++){
+			char *filename = get_charv(args.files, i);
+			if(!filename){
+				fprintf(stderr, "Error : Unable to Extract \n");
+				goto cleanFail;
+			}
+			int extract = mz_extract(filename);
 			if(extract != 0){
-				fprintf(stderr, "Error : Unable to Extract %s\n", args.files[i]);
-				return MZ_FAILURE;
+				fprintf(stderr, "Error : Unable to Extract %s\n", filename);
+				goto cleanFail;
 			}
 		}
-		return MZ_SUCCESS;
+		goto cleanSucc;
 	}else if(args.mode == MODE_FILESIN){
 
-		if(args.file_count == 0){
+		size_t size = size_charv(args.files);
+		if(size == 0){
 			fprintf(stderr, "Error : No Files Passed\n");
-			return MZ_FAILURE;
+			goto cleanFail;
 		}
-		for(uint64_t i = 0 ; i < args.file_count; i++){
-			int filesin = mz_filesin(args.files[i]);
+		for(uint64_t i = 0 ; i < size; i++){
+			char *filename = get_charv(args.files, i);
+			if(!filename){
+				fprintf(stderr, "Error : Unable to Find Files\n");
+				goto cleanFail;
+			}
+			int filesin = mz_filesin(filename);
 			if(filesin != 0){
-				fprintf(stderr, "Error : Unable to Find Files in %s\n", args.files[i]);
-				return MZ_FAILURE;
+				fprintf(stderr, "Error : Unable to Find Files in %s\n", filename);
+				goto cleanFail;
 			}
 		}
-		return MZ_SUCCESS;
+		goto cleanSucc;
 	}
-	return MZ_SUCCESS;
+	goto cleanSucc;
+cleanSucc:
+    destroy_charv(args.files);
+    return MZ_SUCCESS;
+cleanFail:
+    destroy_charv(args.files);
+    return MZ_FAILURE;
 }
 
 // MZ File Archiving Function
 // Error message prefix :- Error while archiving
-int mz_archive(char *files[], uint64_t file_count, char *outfile, int compression)
+int mz_archive(charv *files, char *outfile, int compression)
 {
 	// For Cleanup references
 	FILE *in = NULL;
 	FILE *out = NULL;
 	char *buffer = NULL;
+	
+	uint64_t file_count = (uint64_t)size_charv(files);
 	
 	out = fopen(outfile, "wb");
 	if(!out){
@@ -432,7 +517,11 @@ int mz_archive(char *files[], uint64_t file_count, char *outfile, int compressio
 
 	for(size_t file = 0; file < file_count; file++){
 
-		char *filename = files[file];
+		char *filename = get_charv(files, file);
+		if(!filename){
+			fprintf(stderr, "Error while archiving : Unable to initialize filename\n");
+			goto cleanErr;
+		}
 		
 		if(mz_sanitize_path(filename) == MZ_WARNING){
 			fprintf(stderr, "Error while archiving : Sanitization warning\n");
@@ -466,11 +555,11 @@ int mz_archive(char *files[], uint64_t file_count, char *outfile, int compressio
 		int64_t remaining = filecontentsize;
 		while(remaining != 0){
 			int64_t chunk = MZ_BUFFER > remaining ? remaining : MZ_BUFFER;
-			if(fread(buffer, chunk, 1, in) != 1){
+			if(fread(buffer, 1, chunk, in) != chunk){
 				fprintf(stderr, "Error while archiving : Unable to read file content\n");
 				goto cleanErr;
 			}
-			if(fwrite(buffer, chunk, 1, out) != 1){
+			if(fwrite(buffer, 1, chunk, out) != chunk){
 				fprintf(stderr, "Error while archiving : Unable to write file content\n");
 				goto cleanErr;
 			}
@@ -550,7 +639,7 @@ int mz_extract(char *mz_file)
 			goto cleanErr;
 		}
 		
-		if(filenamelength > 4096){
+		if (filenamelength == 0 || filenamelength > 4096){
 			fprintf(stderr, "Error while extracting : Invalid filename length\n");
 			goto cleanErr;
 		}
@@ -598,11 +687,11 @@ int mz_extract(char *mz_file)
 		int64_t remaining = filecontentsize;
 		while(remaining != 0){
 			int64_t chunk = MZ_BUFFER > remaining ? remaining : MZ_BUFFER;
-			if(fread(buffer, chunk, 1, in) != 1){
+			if(fread(buffer, 1, chunk , in) != chunk){
 				fprintf(stderr, "Error while extracting : Unable to read file content\n");
 				goto cleanErr;
 			}
-			if(fwrite(buffer, chunk, 1, out) != 1){
+			if(fwrite(buffer, 1, chunk , out) != chunk){
 				fprintf(stderr, "Error while extracting : Unable to write file content\n");
 				goto cleanErr;
 			}
@@ -667,7 +756,7 @@ int mz_filesin(char *mz_file)
 		fprintf(stderr, "Error while checking files : Invalid File Count\n");
 		goto cleanErr;
 	}
-	printf("Files in %s : %" PRIu64 "\n", mz_file, file_count);
+	printf("Files mentioned in %s : %" PRIu64 "\n", mz_file, file_count);
 
 	for(uint64_t file = 0; file < file_count; file++){
 		uint64_t filenamelength;
