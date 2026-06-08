@@ -59,7 +59,7 @@
 
 // MZ definitions
 #define MZ_HEADER "MZ"
-#define MZ_VERSION "1.4.0"
+#define MZ_VERSION "1.4.1"
 
 // MZ buffer size
 #define MZ_BUFFER 1048576
@@ -349,7 +349,6 @@ MZ_ARGS mz_parse_args(int argc, char *argv[])
 				return args;
 			}
 		}
-
 		destroy_charv(files_in_folder);
 	}
 	

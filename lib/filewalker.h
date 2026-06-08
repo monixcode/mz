@@ -109,7 +109,6 @@ charv *filewalk(const char *path)
 						fprintf(stderr, "Error from filewalk : Unable to Push files\n");
 						return NULL;
 					}
-					free(files_in_sub);
                 }
                 destroy_charv(sub);
             }
