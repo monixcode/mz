@@ -1,5 +1,5 @@
 ## MZ File Archiver
-For More Details and explanation visit :- 
+A File Archiving CLI Tool written in pure C. No external third-party dependencies required except the C standard libraries.
 
 ## Version
 2.0.0
