@@ -56,7 +56,7 @@
 
 // MZ definitions
 #define MZ_HEADER "MZ"
-#define MZ_VERSION "0.1.0"
+#define MZ_VERSION "v0.1.0"
 
 // MZ buffer size
 #define MZ_BUFFER 1048576
