@@ -93,7 +93,7 @@ Extract all files.
 mz -x archive.mz
 ```
 
-Extract into a specific directory.
+Extract all files of a specific directory.
 
 ```bash
 mz -x archive.mz -Idir extracted --verbose --error
