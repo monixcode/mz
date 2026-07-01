@@ -153,17 +153,6 @@ mz --version
 
 ---
 
-# Future Plans
-
-- Archive integrity verification (CRC32)
-- Optional compression
-- Password-protected archives
-- Multi-threaded archiving
-- Self-extracting archives
-- GUI frontend
-
----
-
 # Credits
 
 MZ follows the **STB-style single-header library design** popularized by **Sean Barrett**.
